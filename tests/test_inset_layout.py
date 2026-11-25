@@ -15,6 +15,13 @@ def test_ass_has_hook_and_caption():
     assert "Hook,0,0,0,HOOK" in ass and "hi (x)" in ass
 
 
+def test_caption_sits_in_upper_game_area():
+    # Game subtitles are burned into the bottom of many clips; captions go near the top of the game area.
+    ass = inset_layout.build_ass("", [{"start": 0, "end": 1, "text": "x"}])
+    assert ",1,1,5,0,2,30,30,1380" in ass
+    assert "Cap,0,0,0,x" in ass
+
+
 def test_render_fixture():
     if not shutil.which("ffmpeg"):
         print("skip: no ffmpeg"); return
@@ -33,4 +40,4 @@ def test_render_fixture():
 
 
 if __name__ == "__main__":
-    test_ass_has_hook_and_caption(); test_render_fixture(); print("ok")
+    test_ass_has_hook_and_caption(); test_caption_sits_in_upper_game_area(); test_render_fixture(); print("ok")
