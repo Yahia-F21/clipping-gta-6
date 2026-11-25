@@ -77,7 +77,7 @@ def diarized_words(wav, out_dir, cfg):
         cmd += ["--model-path", str(model)]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-    except FileNotFoundError:
+    except (FileNotFoundError, PermissionError):
         print("[voices] whisperkit-cli not found" + ("" if IS_MAC else " (it's macOS-only)")
               + "; single-speaker captions", flush=True)
         return None
