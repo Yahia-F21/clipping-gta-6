@@ -25,6 +25,8 @@ Tested: `python tests/test_inset_layout.py` renders a synthetic fixture (no real
 and checks the output size is 1080x1920. A rendered frame was inspected by eye. Not tested:
 other machines, other operating systems and real stream sources beyond the ones used by the author.
 
+Caption position: captions are bottom-aligned just inside the top of the game area (`caption_y`, default 540), so they do not cover subtitles that games or streamers burn into the lower part of the clip.
+
 Fonts: captions use DejaVu Sans; install it or change the style names in `build_ass` if
 your system lacks it.
 
