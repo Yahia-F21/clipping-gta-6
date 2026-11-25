@@ -41,21 +41,21 @@ def _esc(text):
     return text.replace("\\", "").replace("{", "(").replace("}", ")").replace("\n", "\\N")
 
 
-def build_ass(hook, captions, hook_seconds=6.0, caption_y=1045):
+def build_ass(hook, captions, hook_seconds=6.0, caption_y=540):
     lines = [
         "[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}",
         "[V4+ Styles]",
         "Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,Bold,BorderStyle,"
         "Outline,Shadow,Alignment,MarginL,MarginR,MarginV",
         "Style: Hook,DejaVu Sans,74,&H00FFFFFF,&H00000000,&H80000000,1,1,6,0,8,60,60,170",
-        "Style: Cap,DejaVu Sans,54,&H0000FFFF,&H00000000,&H80000000,1,1,5,0,5,30,30,0",
+        f"Style: Cap,DejaVu Sans,54,&H0000FFFF,&H00000000,&H80000000,1,1,5,0,2,30,30,{H - caption_y}",
         "[Events]",
         "Format: Layer,Start,End,Style,MarginL,MarginR,MarginV,Text",
     ]
     if hook:
         lines.append(f"Dialogue: 0,{_ts(0)},{_ts(hook_seconds)},Hook,0,0,0,{_esc(hook)}")
     for c in captions:
-        lines.append(f"Dialogue: 0,{_ts(c['start'])},{_ts(c['end'])},Cap,0,0,{caption_y},{_esc(c['text'])}")
+        lines.append(f"Dialogue: 0,{_ts(c['start'])},{_ts(c['end'])},Cap,0,0,0,{_esc(c['text'])}")
     return "\n".join(lines) + "\n"
 
 
