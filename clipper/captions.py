@@ -42,6 +42,10 @@ HOOK_STYLES = {
 # In split the hook sits on the seam so it never covers the streamer's face.
 LAYOUTS = {"fit": {"hook_y": 400, "caption_y": 1420}, "split": {"hook_y": 768, "caption_y": 1380},
            "inset": {"hook_y": 230, "caption_y": 500}}
+# In the inset layout the game area starts at y=380; the hook must sit fully above it (with margin for the
+# shadow), shrinking its font when a long hook would not fit.
+INSET_GAME_TOP = 380
+INSET_HOOK_MARGIN = 16
 _fonts = {}
 
 
@@ -265,12 +269,19 @@ def render_hook(text, path, style="box", layout="fit"):
         return
     tokens = parse_markup(text)
     words = [w.upper() if st["upper"] else w for w, _ in tokens]
-    f = font_for(st["font"], st["size"], " ".join(words))
-    lines = _wrap(words, f, 900)[:3]
-    lh = int(st["size"] * 1.2)
+    size = st["size"]
+    while True:
+        f = font_for(st["font"], size, " ".join(words))
+        lines = _wrap(words, f, 900)[:3]
+        lh = int(size * 1.2)
+        box_h = lh * len(lines) + 50
+        if layout != "inset" or box_h <= INSET_GAME_TOP - INSET_HOOK_MARGIN or size <= 44:
+            break
+        size -= 8
     centre = LAYOUTS.get(layout, LAYOUTS["fit"])["hook_y"]
-    box_h = lh * len(lines) + 50
     top = centre - box_h // 2
+    if layout == "inset":
+        top = max(0, min(top, INSET_GAME_TOP - INSET_HOOK_MARGIN - box_h))
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
