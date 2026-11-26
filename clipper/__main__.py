@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from . import analyze as analyze_mod
+from . import campaigns as campaigns_mod
 from . import config, hooks, library, render as render_mod, schedule, simulate, sources, transcribe, voice_setup
 from . import bench as bench_mod
 from . import cleanup as cleanup_mod
@@ -120,6 +121,11 @@ def main(argv=None):
     ck = sub.add_parser("check", help="check picks.json hooks/titles against the viral research rules")
     ck.add_argument("picks")
     ck.add_argument("--job", help="the picks' job: also fail picks reusing footage this profile already exported")
+    ca = sub.add_parser("campaigns", help="list the GTA 6 campaign presets (worker-compiled, unverified briefs)")
+    ca.add_argument("action", choices=["list", "check"])
+    ca.add_argument("campaign", nargs="?", help="check: campaign key, e.g. rexxlife")
+    ca.add_argument("--picks", help="check: picks.json to test against the preset")
+    ca.add_argument("--seconds", type=float, help="check: override the pick's render length")
     sm = sub.add_parser("simulate", help="Monte Carlo swipe test: rank a picks.json's hook variants")
     sm.add_argument("picks", nargs="?", help="omit to print the fitted effect of every hook feature")
     sm.add_argument("--strategies", action="store_true", help="compare hooks-per-clip strategies at equal uploads")
@@ -216,6 +222,19 @@ def main(argv=None):
                 sys.exit(3)
         top = args.top_hooks if args.top_hooks is not None else int(os.environ.get("CLIPPER_TOP_HOOKS") or 0)
         print(json.dumps(render_mod.render(job, picks, cfg, args.first_hook_only, args.out, top), indent=2))
+    elif args.cmd == "campaigns":
+        if args.action == "list":
+            print(json.dumps({"presets": campaigns_mod.CAMPAIGNS, "unknown": campaigns_mod.UNKNOWN_CAMPAIGNS,
+                              "skipped": campaigns_mod.SKIPPED_CAMPAIGNS}, indent=2, ensure_ascii=False))
+        else:
+            if args.campaign not in campaigns_mod.CAMPAIGNS:
+                raise SystemExit(f"no preset '{args.campaign}' (known: {', '.join(campaigns_mod.CAMPAIGNS)}; "
+                                 f"unknown briefs: {', '.join(campaigns_mod.UNKNOWN_CAMPAIGNS)})")
+            picks = json.loads(open(args.picks, encoding="utf-8").read()) if args.picks else [{}]
+            out = [campaigns_mod.check(p, args.campaign, args.seconds) for p in picks]
+            print(json.dumps(out, indent=2, ensure_ascii=False))
+            if any(r["fails"] for r in out):
+                sys.exit(1)
     elif args.cmd == "check":
         picks = json.loads(open(args.picks, encoding="utf-8").read())
         report = hooks.check_picks(picks, cfg, job_words(args.job) if args.job else None, job_words)
