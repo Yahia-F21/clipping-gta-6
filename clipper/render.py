@@ -443,6 +443,14 @@ def top_hooks(pick, cfg, n):
     return out
 
 
+def joined_caption_layout(pick_layout, layouts):
+    """Caption/hook positions for a joined segment cut: keep the segments' own layout instead of falling back
+    to 'fit' (a fit hook at y=400 overlaps the inset's game area, which starts at y=380, and fit captions at
+    y=1420 cover the inset facecam). Split wins when mixed: its seam keeps the hook off the facecam on top."""
+    return (pick_layout or {}).get("as") or ("split" if "split" in layouts else
+                                             "inset" if "inset" in layouts else "fit")
+
+
 def build_segment_job(pick, job, cfg, out):
     """Cut every segment to 1080x1920 with its own layout and join them into `out` (source.mp4 + transcript.json
     with word times shifted onto the joined clip), so the normal render runs on it. Returns the pick to render
@@ -472,8 +480,7 @@ def build_segment_job(pick, job, cfg, out):
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst),
                     "-c", "copy", str(out / "source.mp4")], check=True)
     (out / "transcript.json").write_text(transcribe.dumps_transcript({"words": words}), encoding="utf-8")
-    # never cover a face: if any segment shows the facecam on top, the hook sits on the split seam
-    as_ = (pick.get("layout") or {}).get("as") or ("split" if "split" in layouts else "fit")
+    as_ = joined_caption_layout(pick.get("layout"), layouts)
     flat = {k: v for k, v in pick.items() if k != "segments"}
     payoff = round(t - (float(pick["segments"][-1]["end"]) - float(pick["segments"][-1]["start"])), 3)
     return {**flat, "start": 0.0, "end": round(t, 3), "layout": {"type": "vertical", "as": as_},
