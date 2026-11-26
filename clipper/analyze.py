@@ -253,6 +253,8 @@ def to_markdown(r):
              f"**Worth exporting: {r['recommended']} video(s)** · content: {r['profile']} "
              f"(loudness spread {r['loudness_spread_lu']} LU) · clip length {r['clip_length']['min']}–"
              f"{r['clip_length']['max']}s, aim {r['clip_length']['target']}s", "",
+             "**Scores are heuristics** (loudness, jumps, hype words, speech rate). They never look at the picture: view "
+             "the contact sheet and record what the payoff is in the pick's `payoff` note, or skip the moment.",
              f"**Suggested clip type → hook plan:** {r.get('hook_plan', '')}",
              *([f"**Twitch ad breaks (excluded from every candidate):** "
                 + ", ".join(f"{fmt(a)}-{fmt(b)}" for a, b in r["ad_breaks"]), ""] if r.get("ad_breaks") else []),
