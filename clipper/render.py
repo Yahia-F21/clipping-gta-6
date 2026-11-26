@@ -45,6 +45,15 @@ def caption_layout(layout):
 def video_filter(layout, size):
     if layout.get("type") == "vertical":  # already 1080x1920 (a joined story cut)
         return "[0:v]scale=1080:1920,setsar=1[v1]"
+    if layout.get("type") == "inset":  # game full width, small sharp facecam inset over a blurred copy of the game
+        sw, sh = size
+        fx, fy, fw, fh = layout["face"]
+        scale = float(layout.get("cam_scale", 1.2))
+        cam_w, cam_h = _even(fw * sw * scale), _even(fh * sh * scale)
+        return ("[0:v]split=3[a][b][c];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+                "boxblur=30:3,eq=brightness=-0.15[bg];[b]scale=1080:608[g];"
+                f"[c]crop={_even(fw * sw)}:{_even(fh * sh)}:{int(fx * sw)}:{int(fy * sh)},"
+                f"scale={cam_w}:{cam_h}:flags=lanczos[cam];[bg][g]overlay=0:380[t];[t][cam]overlay=(W-w)/2:1100[v1]")
     if layout.get("type") == "split":
         sw, sh = size
         fx, fy, fw, fh = layout["face"]
