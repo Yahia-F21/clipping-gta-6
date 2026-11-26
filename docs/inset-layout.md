@@ -48,3 +48,12 @@ game and captions sit in the upper part of the game area, away from burned-in ga
 `clipper check` failures (weak hook, dead air, missing title wording) are not cosmetic. Fix
 them before treating an export as ready to post. Rendering after a failed check is only a
 pipeline test, not a usable clip. Test: `python -m unittest tests.test_inset_render_layout`.
+
+Face-crop warnings (heuristic, unofficial): `clipper render` prints a `[check]` warning when an
+inset pick's `face` box extends past the source frame, is tiny, or sits on the hard edge of a
+rectangle the way HUD panels and minimaps do (`face_crop_warnings` in `clipper/render.py`, one
+sampled frame per pick). The edge test catches hard-edged overlays; a soft or translucent HUD
+sliver fully inside the box can pass unnoticed, so measure the box on real frames
+(`python3 -m clipper frame <job> <seconds>`) and look at a rendered frame either way.
+Tests: `python -m unittest tests.test_face_crop` (geometry always, edge heuristic with a synthetic
+ffmpeg fixture).
