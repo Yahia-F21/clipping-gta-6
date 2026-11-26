@@ -9,6 +9,10 @@ Always review the clip visually before using it.
 
 Usage:
   python -m clipper.twitch_clips "Grand Theft Auto VI" --period LAST_WEEK --limit 40 [--include-flagged]
+  python -m clipper.twitch_clips "Grand Theft Auto VI" --live --limit 25     # who is live in the category right now
+
+--live makes ONE request (no paging, limit capped at 100) and lists the top live streams by viewers. The category is the
+streamer's own tag, not proof of gameplay: check the title and the footage. It is a visible lower bound, not a total.
 """
 import argparse
 import json
@@ -56,13 +60,46 @@ def top_clips(game, period="LAST_WEEK", limit=40, fetch=gql):
     return sorted(out, key=lambda c: -c["views"])
 
 
+MAX_LIVE = 100  # one page, never paged: a single request per call
+
+
+def build_live_query(game, limit):
+    return ("query{game(name:%s){id name streams(first:%d,options:{sort:VIEWER_COUNT}){edges{node{title viewersCount "
+            "broadcaster{login}}}}}}" % (json.dumps(game), max(1, min(int(limit), MAX_LIVE))))
+
+
+def live_streams(game, limit=25, fetch=gql):
+    """Return [{creator,url,title,viewers,flagged}] for the category's live streams, most viewers first.
+
+    One request only. The result is the visible top of the list, not a total, and the category tag is the streamer's
+    label: some streams in it are talk shows or other games."""
+    data = fetch(build_live_query(game, limit))
+    g = (data.get("data") or {}).get("game")
+    if not g:
+        raise ValueError(f"no Twitch category named {game!r}")
+    out = []
+    for e in (g.get("streams") or {}).get("edges") or []:
+        n = e["node"]
+        creator = (n.get("broadcaster") or {}).get("login", "")
+        out.append({"creator": creator, "url": f"https://www.twitch.tv/{creator}", "title": n.get("title") or "",
+                    "viewers": n.get("viewersCount") or 0, "flagged": bool(FLAG_RE.search(n.get("title") or ""))})
+    return sorted(out, key=lambda c: -c["viewers"])
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("game")
     p.add_argument("--period", default="LAST_WEEK", choices=PERIODS)
     p.add_argument("--limit", type=int, default=40)
+    p.add_argument("--live", action="store_true", help="list who is live in the category now (one request)")
     p.add_argument("--include-flagged", action="store_true", help="also list titles the keyword screen flagged")
     a = p.parse_args()
+    if a.live:
+        for c in live_streams(a.game, a.limit):
+            if c["flagged"] and not a.include_flagged:
+                continue
+            print(f"{c['viewers']:>8} {c['creator']:<20} {c['title'][:60]} {c['url']}")
+        return
     for c in top_clips(a.game, a.period, a.limit):
         if c["flagged"] and not a.include_flagged:
             continue
