@@ -42,8 +42,10 @@ The stock renderer also accepts the same layout as a pick layout, so live chunks
 ```
 
 `face` is the facecam rectangle as fractions of the source (same as `split`; find it with
-`python3 -m clipper frame <id> <seconds>`). `cam_scale` defaults to 1.2. The hook sits above the
-game and captions sit in the upper part of the game area, away from burned-in game subtitles.
+`python3 -m clipper frame <id> <seconds>`). `cam_scale` defaults to 1.2. The hook sits fully above the
+game area (a long hook shrinks until it fits; the game starts at y=380) and captions sit in the upper
+part of the game area, away from burned-in game subtitles. Segment picks keep these positions when the
+segments are joined (`joined_caption_layout`), instead of falling back to the centred `fit` positions.
 
 `clipper check` failures (weak hook, dead air, missing title wording) are not cosmetic. Fix
 them before treating an export as ready to post. Rendering after a failed check is only a
