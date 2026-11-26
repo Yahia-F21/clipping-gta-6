@@ -2,6 +2,7 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 import tempfile
 import time
 from datetime import date
@@ -63,6 +64,65 @@ def video_filter(layout, size):
                 f"[b]scale=-2:1152,crop=1080:1152:(iw-1080)*{gx}:0[bot];[top][bot]vstack[v1]")
     return ("[0:v]split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
             "gblur=sigma=40,eq=brightness=-0.18[bg];[b]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2[v1]")
+
+
+def face_crop_warnings(layout, size, src=None, at=0.0):
+    """Heuristic, unofficial: sanity checks on an inset face crop. Geometry is always checked; when `src`
+    is given, one sampled frame at `at` seconds feeds a straight-edge test that flags a crop border slicing
+    through a sharp rectangle such as a HUD panel or minimap. Warnings only, never a block: review the crop
+    visually before posting."""
+    if layout.get("type") != "inset":
+        return []
+    try:
+        fx, fy, fw, fh = [float(v) for v in layout["face"]]
+    except (KeyError, TypeError, ValueError):
+        return ["inset layout has no usable face box [x, y, w, h]"]
+    sw, sh = size
+    warn = []
+    if fx < -0.001 or fy < -0.001 or fx + fw > 1.001 or fy + fh > 1.001:
+        warn.append("face crop extends past the source frame")
+    if fw * sw < 80 or fh * sh < 80:
+        warn.append(f"face crop is tiny ({int(fw * sw)}x{int(fh * sh)} px); the inset will be mostly blur")
+    if src is not None and not warn:
+        warn += _hud_edge_warnings(src, at, fx, fy, fw, fh)
+    return warn
+
+
+def _hud_edge_warnings(src, at, fx, fy, fw, fh):
+    """A HUD panel or minimap is a sharp rectangle; a crop border landing on its edge suggests the box caught
+    HUD, not only the face. Heuristic: a strong brightness step along most of one crop border, measured on a
+    small grayscale frame."""
+    gw, gh = 160, 90
+    res = subprocess.run(["ffmpeg", "-v", "error", "-ss", str(at), "-i", str(src), "-frames:v", "1",
+                          "-vf", f"scale={gw}:{gh},format=gray", "-f", "rawvideo", "-"],
+                         capture_output=True, check=True)
+    px = res.stdout
+    if len(px) != gw * gh:
+        return []
+    x0, x1 = int(fx * gw), int((fx + fw) * gw)
+    y0, y1 = int(fy * gh), int((fy + fh) * gh)
+    col = [0.0] * gw  # col[x]: fraction of the box's rows with a strong step between columns x-1 and x
+    for x in range(1, gw):
+        hits = sum(1 for y in range(y0, min(y1, gh)) if abs(px[y * gw + x] - px[y * gw + x - 1]) > 48)
+        col[x] = hits / max(1, min(y1, gh) - y0)
+    row = [0.0] * gh
+    for y in range(1, gh):
+        hits = sum(1 for x in range(x0, min(x1, gw)) if abs(px[y * gw + x] - px[(y - 1) * gw + x]) > 48)
+        row[y] = hits / max(1, min(x1, gw) - x0)
+
+    def edge(fracs, i):  # the border at i, allowing one pixel of scale rounding
+        return max((fracs[j] for j in (i, i + 1) if 0 <= j < len(fracs)), default=0.0)
+
+    warn = []
+    if x0 > 0 and edge(col, x0) > 0.6:
+        warn.append("face crop's left edge may cut through a HUD element (heuristic, verify visually)")
+    if x1 < gw - 1 and edge(col, x1) > 0.6:
+        warn.append("face crop's right edge may cut through a HUD element (heuristic, verify visually)")
+    if y0 > 0 and edge(row, y0) > 0.6:
+        warn.append("face crop's top edge may cut through a HUD element (heuristic, verify visually)")
+    if y1 < gh - 1 and edge(row, y1) > 0.6:
+        warn.append("face crop's bottom edge may cut through a HUD element (heuristic, verify visually)")
+    return warn
 
 
 def action_labels(pick, words):
@@ -521,6 +581,12 @@ def render(job, picks, cfg, first_hook_only=False, out_dir=None, top=0):
         folder.mkdir()
         taken = set()
         creds = credits(pick, job, meta)
+        lay = pick.get("layout") or {}
+        if lay.get("type") == "inset":
+            seg = (pick.get("segments") or [pick])[0]
+            at = (float(seg["start"]) + float(seg.get("end", seg["start"]))) / 2
+            for w in face_crop_warnings(lay, source_size(job / "source.mp4"), job / "source.mp4", at):
+                print(f"[check] video {n}: {w}", file=sys.stderr, flush=True)
         with tempfile.TemporaryDirectory(dir=job) as tmp:
             tmp = Path(tmp)
             src_job, flat, words = job, pick, fallback
