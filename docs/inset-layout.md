@@ -31,3 +31,20 @@ Fonts: captions use DejaVu Sans; install it or change the style names in `build_
 your system lacks it.
 
 Rights: you are responsible for permission to use any footage. This repo ships no media.
+
+## Using it inside the stock `clipper render` flow
+
+The stock renderer also accepts the same layout as a pick layout, so live chunks and
+`analyze` jobs can use it without the standalone script:
+
+```json
+"layout": {"type": "inset", "face": [0.005, 0.556, 0.196, 0.193], "cam_scale": 1.2}
+```
+
+`face` is the facecam rectangle as fractions of the source (same as `split`; find it with
+`python3 -m clipper frame <id> <seconds>`). `cam_scale` defaults to 1.2. The hook sits above the
+game and captions sit in the upper part of the game area, away from burned-in game subtitles.
+
+`clipper check` failures (weak hook, dead air, missing title wording) are not cosmetic. Fix
+them before treating an export as ready to post. Rendering after a failed check is only a
+pipeline test, not a usable clip. Test: `python -m unittest tests.test_inset_render_layout`.
