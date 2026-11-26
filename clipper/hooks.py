@@ -285,6 +285,29 @@ def check_dead_air(pick, words):
     return out
 
 
+DEAD_AIR_BLOCK_S = 5.0   # a silent stretch this long in the finished clip blocks a normal export
+PAYOFF_MIN_CHARS = 20
+
+
+def long_dead_air(pick, words):
+    """Silent stretches of DEAD_AIR_BLOCK_S+ (no word or label): too slow to post, not only a note."""
+    return [m for m in check_dead_air(pick, words)
+            if float(m.split("(")[1].split("s)")[0]) >= DEAD_AIR_BLOCK_S]
+
+
+def check_payoff(picks):
+    """{'video N': message} for picks without a `payoff` note. Candidate scores are audio and keyword heuristics:
+    they never look at the picture. The `payoff` note is the reviewer's record that they watched the moment (contact
+    sheet or clip) and saw or heard a setup and a result, e.g. "car drives off the pier, streamer screams"."""
+    out = {}
+    for n, pick in enumerate(picks, 1):
+        note = str(pick.get("payoff") or "").strip()
+        if len(note) < PAYOFF_MIN_CHARS:
+            out[f"video {n}"] = (f"no `payoff` note (at least {PAYOFF_MIN_CHARS} characters): say what you saw or heard "
+                                 "as the setup and the result. If there is none, do not export this moment")
+    return out
+
+
 def check_fx(pick):
     """Errors for flashes whose `color` the render would reject."""
     from .render import flash_colour
@@ -372,6 +395,8 @@ def check_picks(picks, cfg=None, words=None, load=None):
                 + [x for x in [check_music(pick, cw)] if x]
         if edit:
             entry["edit"] = edit
+        if cw is not None and long_dead_air(pick, cw):
+            entry["dead_air"] = long_dead_air(pick, cw)
         if len(pick.get("hooks") or []) >= 3 and len(used) < 3:
             entry["variety"] = f"hooks only use {sorted(used)}: give each variant a different structure to A/B test"
         if entry:
@@ -381,4 +406,5 @@ def check_picks(picks, cfg=None, words=None, load=None):
 
 def has_fails(report):
     return any(v.get("fails") for e in report.values() for k in ("hooks", "titles") for v in e.get(k, {}).values()) \
-        or any("variety" in e or "length" in e or "labels" in e or "footage" in e or "fx" in e for e in report.values())
+        or any("variety" in e or "length" in e or "labels" in e or "footage" in e or "fx" in e or "dead_air" in e
+            for e in report.values())
