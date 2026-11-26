@@ -112,6 +112,9 @@ def main(argv=None):
     r.add_argument("--top-hooks", type=int, help="render only the N best-ranked hooks per clip (simulate's ranking); "
                                                  "default $CLIPPER_TOP_HOOKS (e.g. in .env), else every hook")
     r.add_argument("--out", help="output folder (default exports/<profile>/<today>; numbering continues)")
+    r.add_argument("--diagnostic", action="store_true",
+                   help="render even though `check` fails or a pick has no `payoff` note; output goes to a "
+                        "`diagnostic` folder and is a pipeline test, not a clip to post")
     r.add_argument("--allow-say", action="store_true", help="use the system voice (macOS say / espeak-ng) if no Fish Audio key is saved")
     sub.add_parser("voice-setup", help="open Fish Audio + a TextEdit note to paste and save your API key")
     ck = sub.add_parser("check", help="check picks.json hooks/titles against the viral research rules")
@@ -195,9 +198,15 @@ def main(argv=None):
         if too_long:
             raise SystemExit("[check] clips over the length cap, nothing rendered:\n" + "\n".join(too_long))
         problems = hooks.check_picks(picks, cfg, job_words(job), job_words)
-        if hooks.has_fails(problems):
-            print("[check] hooks/titles that break the research rules (rendering anyway):\n"
-                  + json.dumps(problems, indent=2, ensure_ascii=False), file=sys.stderr)
+        missing_payoff = hooks.check_payoff(picks)
+        if hooks.has_fails(problems) or missing_payoff:
+            report = json.dumps({"fails": problems, "payoff": missing_payoff}, indent=2, ensure_ascii=False)
+            if not args.diagnostic:
+                raise SystemExit("[check] failing checks block a normal export, nothing rendered (fix them, or pass "
+                                 "--diagnostic for a pipeline test only):\n" + report)
+            print("[check] DIAGNOSTIC render, not a clip to post:\n" + report, file=sys.stderr)
+            if not args.out:
+                args.out = str(render_mod.export_dir(cfg) / "diagnostic")
         if any(p.get("voiceover") for p in picks) and not os.environ.get("FISH_API_KEY") and not args.allow_say:
             if sys.stdin.isatty():
                 voice_setup.setup(cfg)
@@ -213,6 +222,9 @@ def main(argv=None):
         for n, reused in reused_footage(picks, args.job, cfg).items():
             report.setdefault(f"video {n}", {})["footage"] = reused
         failing = hooks.has_fails(report)
+        for n, msg in hooks.check_payoff(picks).items():
+            report.setdefault(n, {})["payoff"] = msg
+            failing = True
         if report:
             print(json.dumps(report, indent=2, ensure_ascii=False))
         print("FIX the 'fails' above" if failing else
