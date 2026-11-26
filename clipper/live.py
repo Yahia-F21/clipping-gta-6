@@ -315,6 +315,34 @@ def analyze_queued(jid, cfg):
         time.sleep(15)
 
 
+# HLS resolve (yt-dlp -g) retries: a hard cap plus exponential backoff, so a failing resolve can never turn
+# into a request burst against the CDN. After the cap the recorder exits; the next watch pass starts it fresh.
+MAX_RESOLVE_FAILS = 8
+RESOLVE_BACKOFF_BASE_S = 5
+RESOLVE_BACKOFF_CAP_S = 120
+STALL_S = 180  # a running ffmpeg that writes no bytes for this long has a dead connection: reconnect
+
+
+def resolve_backoff(fails, base=RESOLVE_BACKOFF_BASE_S, cap=RESOLVE_BACKOFF_CAP_S):
+    """Seconds to wait after `fails` consecutive resolve failures: 5, 10, 20, ... capped at 120."""
+    return min(cap, base * 2 ** max(0, fails - 1))
+
+
+class StallWatch:
+    """Flags a recording session whose ffmpeg stays alive but writes nothing (a dead HLS connection keeps the
+    process running). Feed it the session's total bytes each poll; True means stalled."""
+
+    def __init__(self, stall_s=STALL_S):
+        self.stall_s, self.last, self.since = stall_s, None, None
+
+    def update(self, size, now):
+        if self.last is not None and size <= self.last:
+            self.since = self.since if self.since is not None else now
+            return now - self.since >= self.stall_s
+        self.last, self.since = size, None
+        return False
+
+
 def _recording_started(d, session, timeout=120):
     """True once this session's first segment is growing on disk."""
     end = time.time() + timeout
@@ -337,6 +365,7 @@ def record(name, url, chunk_minutes=30, quality="best[height<=1080]/best", cfg=N
     stop = []
     signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
     misses = 0
+    fails = 0
     pending = []
     p, reconnect = {}, False
     while not stop and misses < 3:
@@ -350,14 +379,23 @@ def record(name, url, chunk_minutes=30, quality="best[height<=1080]/best", cfg=N
         misses = 0
         hls = subprocess.run(["yt-dlp", "-g", "-f", quality, "--no-warnings", url], capture_output=True, text=True)
         if hls.returncode != 0:
-            time.sleep(5)
+            fails += 1
+            if fails >= MAX_RESOLVE_FAILS:
+                print(f"[live] {name}: HLS resolve failed {fails}x in a row; recorder exiting, the next watch "
+                      f"pass retries", flush=True)
+                break
+            wait = resolve_backoff(fails)
+            print(f"[live] {name}: HLS resolve failed ({fails}x); retrying in {wait}s", flush=True)
+            time.sleep(wait)
             continue
+        fails = 0
         session = time.time()
         pattern = d / f"{int(session)}-%04d.ts"
         ff = subprocess.Popen(["ffmpeg", "-loglevel", "error", "-i", hls.stdout.strip().splitlines()[0], "-c", "copy",
                                "-f", "segment", "-segment_time", str(chunk_minutes * 60), "-reset_timestamps", "1",
                                str(pattern)])
         done = set()
+        stall = StallWatch()
         if replace_pid and _recording_started(d, session):
             try:
                 os.kill(replace_pid, signal.SIGTERM)  # it saves its last partial chunk and exits
@@ -381,6 +419,12 @@ def record(name, url, chunk_minutes=30, quality="best[height<=1080]/best", cfg=N
                         pending.append(t)
         while ff.poll() is None and not stop:
             time.sleep(20)
+            size = sum(f.stat().st_size for f in d.glob(f"{int(session)}-*.ts"))
+            if stall.update(size, time.time()):
+                print(f"[live] {name}: ffmpeg wrote nothing for {STALL_S}s; reconnecting", flush=True)
+                ff.terminate()
+                ff.wait()
+                break
             finish()
         if stop:
             ff.terminate()
