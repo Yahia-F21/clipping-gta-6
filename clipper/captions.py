@@ -37,9 +37,11 @@ HOOK_STYLES = {
     "label": {"font": "tiktok-semibold", "size": 70, "upper": False, "fill": (255, 255, 255),
               "keyword": (200, 90, 255), "stroke": 5, "shadow": False, "box": False},
 }
-# Vertical positions: "fit" = 16:9 game centred; "split" = facecam top 768px, game below.
+# Vertical positions: "fit" = 16:9 game centred; "split" = facecam top 768px, game below;
+# "inset" = game full width at y=380, small facecam inset below it, hook above the game, captions in its upper part.
 # In split the hook sits on the seam so it never covers the streamer's face.
-LAYOUTS = {"fit": {"hook_y": 400, "caption_y": 1420}, "split": {"hook_y": 768, "caption_y": 1380}}
+LAYOUTS = {"fit": {"hook_y": 400, "caption_y": 1420}, "split": {"hook_y": 768, "caption_y": 1380},
+           "inset": {"hook_y": 230, "caption_y": 500}}
 _fonts = {}
 
 
